@@ -1,6 +1,8 @@
 package ma.shaur.bettercoppergolem.mixin;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.function.BiConsumer;
 import java.util.stream.Stream;
 
@@ -19,7 +21,6 @@ import ma.shaur.bettercoppergolem.config.Config;
 import ma.shaur.bettercoppergolem.config.ConfigHandler;
 import ma.shaur.bettercoppergolem.custom.entity.LastItemDataHolder;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.NonNullList;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
@@ -32,6 +33,7 @@ import net.minecraft.world.entity.animal.golem.CopperGolem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.BundleItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.ItemStackTemplate;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.component.BundleContents;
 import net.minecraft.world.item.component.ItemContainerContents;
@@ -206,14 +208,14 @@ public abstract class TransportItemsBetweenContainersMixin
 				else if(componentMap.has(DataComponents.CONTAINER))
 				{
 					ItemContainerContents component = componentMap.get(DataComponents.CONTAINER);
-					List<ItemStack> stacks = ((ItemContainerContentsAccessor)(Object) component).getItems();
+					List<Optional<ItemStackTemplate>> stacks = ((ItemContainerContentsAccessor)(Object) component).getItems();
 					int j = 0;
 					for(; j < stacks.size(); j++)
 					{
-						ItemStack stack = stacks.get(j);
-						if(stack.isEmpty())
+						ItemStack stack = stacks.get(j).isEmpty() ? null : stacks.get(j).get().create();
+						if(stack == null)
 						{
-							stacks.set(j, hand);
+							stacks.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
 							if(entity instanceof LastItemDataHolder lastStackHolder) lastStackHolder.setLastItemStack(handCopy);
 							return ItemStack.EMPTY;
 						}
@@ -223,7 +225,7 @@ public abstract class TransportItemsBetweenContainersMixin
 							int toInsert = Math.min(tillFullStack, hand.getCount());
 							stack.setCount(stack.getCount() + toInsert);
 							hand.setCount(hand.getCount() - tillFullStack);
-							stacks.set(j, stack);
+							stacks.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
 							
 							if (hand.isEmpty()) 
 							{
@@ -234,13 +236,13 @@ public abstract class TransportItemsBetweenContainersMixin
 					}
 					if(j < 27) // I CAN NOT find max slot amount for container component
 					{
-						NonNullList<ItemStack> list = NonNullList.withSize(j + 2, ItemStack.EMPTY);
+						List<Optional<ItemStackTemplate>> list = new ArrayList<>();
 						j = 0;
 						for(; j + 2 < list.size(); j++)
 						{
 							list.set(j, stacks.get(j));
 						}
-						list.set(j, hand);
+						list.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
 						((ItemContainerContentsAccessor)(Object) component).setItems(list); 
 						if(entity instanceof LastItemDataHolder lastStackHolder) lastStackHolder.setLastItemStack(handCopy);
 						return ItemStack.EMPTY;
@@ -354,7 +356,7 @@ public abstract class TransportItemsBetweenContainersMixin
 						if(ItemStack.isSameItemSameComponents(stack, hand)) shouldPlace = true;
 						continue;
 					}
-					else if(hand.getComponents().get(DataComponents.CONTAINER).stream().parallel().filter(i -> !component.stream().parallel().anyMatch(j -> ItemStack.isSameItemSameComponents(i, j))).findAny().isEmpty())
+					else if(hand.getComponents().get(DataComponents.CONTAINER).allItemsCopyStream().parallel().filter(i -> !component.allItemsCopyStream().parallel().anyMatch(j -> ItemStack.isSameItemSameComponents(i, j))).findAny().isEmpty())
 					{
 						shouldPlace = true;
 						continue;
@@ -362,17 +364,18 @@ public abstract class TransportItemsBetweenContainersMixin
 				}
 				else if(config.allowInsertingItemsIntoContainers || config.allowIndividualItemsMatchContainerContents)
 				{
-					Stream<ItemStack> stream = component.stream().parallel();
+					Stream<ItemStack> stream = component.allItemsCopyStream().parallel();
 					if(stream.anyMatch(i -> ItemStack.isSameItem(hand, i)))
 					{
 						shouldPlace = config.allowIndividualItemsMatchContainerContents;
 						if(config.allowInsertingItemsIntoContainers)
 						{
-							List<ItemStack> stacks = ((ItemContainerContentsAccessor)(Object) component).getItems();
+							List<Optional<ItemStackTemplate>> stacks = ((ItemContainerContentsAccessor)(Object) component).getItems();
 							int i = 0;
-							for(ItemStack content : stacks)
+							for(Optional<ItemStackTemplate> template : stacks)
 							{
-								if(content.isEmpty() || ItemStack.isSameItemSameComponents(hand, content) && content.getCount() < content.getMaxStackSize())
+								ItemStack content = template.isEmpty() ? null : template.get().create();
+								if(content == null || ItemStack.isSameItemSameComponents(hand, content) && content.getCount() < content.getMaxStackSize())
 								{
 									shouldInsert = true;
 									break;

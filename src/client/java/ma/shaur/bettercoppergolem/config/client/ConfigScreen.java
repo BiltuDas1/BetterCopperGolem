@@ -8,13 +8,15 @@ import java.util.function.Predicate;
 import com.google.gson.JsonIOException;
 
 import ma.shaur.bettercoppergolem.BetterCopperGolemClient;
+import ma.shaur.bettercoppergolem.client.gui.FilteredEditBox;
 import ma.shaur.bettercoppergolem.config.Config;
 import ma.shaur.bettercoppergolem.config.ConfigHandler;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.OptionInstance;
 import net.minecraft.client.OptionInstance.TooltipSupplier;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractContainerWidget;
+import net.minecraft.client.gui.components.AbstractScrollArea;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
@@ -112,7 +114,7 @@ public class ConfigScreen extends OptionsSubScreen
 		StringWidget textWidget = new StringWidget(100, 20, text, font);
 		textWidget.setMaxWidth(0, TextOverflow.SCROLLING);
 		
-		EditBox field = new EditBox(font, 50, 20, CommonComponents.EMPTY);
+		FilteredEditBox field = new FilteredEditBox(font, 50, 20, CommonComponents.EMPTY);
 		field.setValue(Integer.toString(value));
 		field.setCentered(true);
 		field.setFilter(ONLY_INTEGER_NUMBERS_PREDICATE);
@@ -174,13 +176,13 @@ public class ConfigScreen extends OptionsSubScreen
 
 	    public Container(int width, int height, List<AbstractWidget> children, int spacing) 
 		{
-			super(0, 0, width, height, CommonComponents.EMPTY);
+			super(0, 0, width, height, CommonComponents.EMPTY, AbstractScrollArea.defaultSettings(10));
 			this.children = children;
 			this.spacing = spacing;
 		}
 
 		@Override
-		protected void renderWidget(GuiGraphics guiGraphics, int mouseX, int mouseY, float deltaTicks)
+		protected void extractWidgetRenderState(GuiGraphicsExtractor guiGraphics, int mouseX, int mouseY, float deltaTicks)
 		{
 			guiGraphics.enableScissor(getX(), getY(), getX() + width, getY() + height);
 
@@ -188,7 +190,7 @@ public class ConfigScreen extends OptionsSubScreen
 			for(AbstractWidget widget : children) 
 			{
 				widget.setPosition(x, y);
-				widget.render(guiGraphics, mouseX, mouseY, deltaTicks);
+				widget.extractRenderState(guiGraphics, mouseX, mouseY, deltaTicks);
 				x += widget.getWidth() + spacing;
 			}
 
