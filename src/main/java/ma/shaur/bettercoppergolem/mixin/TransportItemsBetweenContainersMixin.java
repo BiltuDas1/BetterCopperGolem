@@ -225,7 +225,7 @@ public abstract class TransportItemsBetweenContainersMixin
 							int toInsert = Math.min(tillFullStack, hand.getCount());
 							stack.setCount(stack.getCount() + toInsert);
 							hand.setCount(hand.getCount() - tillFullStack);
-							stacks.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
+							stacks.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(stack)));
 							
 							if (hand.isEmpty()) 
 							{
@@ -236,14 +236,7 @@ public abstract class TransportItemsBetweenContainersMixin
 					}
 					if(j < 27) // I CAN NOT find max slot amount for container component
 					{
-						List<Optional<ItemStackTemplate>> list = new ArrayList<>();
-						j = 0;
-						for(; j + 2 < list.size(); j++)
-						{
-							list.set(j, stacks.get(j));
-						}
-						list.set(j, Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
-						((ItemContainerContentsAccessor)(Object) component).setItems(list); 
+						stacks.add(Optional.of(ItemStackTemplate.fromNonEmptyStack(hand)));
 						if(entity instanceof LastItemDataHolder lastStackHolder) lastStackHolder.setLastItemStack(handCopy);
 						return ItemStack.EMPTY;
 					}
