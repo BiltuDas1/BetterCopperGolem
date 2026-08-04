@@ -31,7 +31,7 @@ public class CopperGolemMixin implements LastItemDataHolder
 	@Inject(method = "readAdditionalSaveData(Lnet/minecraft/world/level/storage/ValueInput;)V", at = @At("TAIL"))
 	public void readCustomData(ValueInput view, CallbackInfo info)
 	{
-		view.read("last_item_stack", ItemStack.OPTIONAL_CODEC);
+		view.read("last_item_stack", ItemStack.OPTIONAL_CODEC).ifPresent(stack -> lastItemStack = stack);
 	}
 	
 	@Inject(method = "mobInteract(Lnet/minecraft/world/entity/player/Player;Lnet/minecraft/world/InteractionHand;)Lnet/minecraft/world/InteractionResult;", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/animal/golem/CopperGolem;setItemInHand(Lnet/minecraft/world/InteractionHand;Lnet/minecraft/world/item/ItemStack;)V", shift = At.Shift.AFTER))

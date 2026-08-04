@@ -6,7 +6,8 @@
 		"CopperGolemMixin",
 		"TransportItemsBetweenContainersMixin",
 		"ItemContainerContentsAccessor",
-		"CopperGolemAiMixin"
+		"CopperGolemAiMixin",
+		"LivingEntityMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
