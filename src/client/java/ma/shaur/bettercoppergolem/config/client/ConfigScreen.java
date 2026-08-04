@@ -67,6 +67,7 @@ public class ConfigScreen extends OptionsSubScreen
 		config.cooldownTime = defaultValues.cooldownTime;
 		config.verticalRange = defaultValues.verticalRange;
 		config.interactionTime = defaultValues.interactionTime;
+		config.maxGlobalChestLogSize = defaultValues.maxGlobalChestLogSize;
 
 		try
 		{
@@ -106,7 +107,7 @@ public class ConfigScreen extends OptionsSubScreen
 		list.addSmall(intContainer(Component.translatable(translationKey("interaction_time")),Component.translatable(translationKey("interaction_time.info")), config.interactionTime, i -> config.interactionTime = i),
 					  OptionInstance.createBoolean(translationKey("match_oxidation_level"), tooltipFactory("match_oxidation_level"), config.matchOxidationLevel, b -> config.matchOxidationLevel = b).createButton(options));
 		list.addSmall(intContainer(Component.translatable(translationKey("horizontal_range")),Component.translatable(translationKey("horizontal_range.info")), config.horizontalRange, i -> config.horizontalRange = i),
-					  null);
+					  intContainer(Component.translatable(translationKey("max_global_chest_log_size")), Component.translatable(translationKey("max_global_chest_log_size.info")), config.maxGlobalChestLogSize, i -> config.maxGlobalChestLogSize = i));
 	}
 	
 	private Container intContainer(Component text, Component tooltip, int value, ChangeListener listener)

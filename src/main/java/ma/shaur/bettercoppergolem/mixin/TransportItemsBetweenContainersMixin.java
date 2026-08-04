@@ -10,17 +10,21 @@ import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Constant;
+import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyArg;
 import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import com.llamalad7.mixinextras.sugar.Local;
 
 import ma.shaur.bettercoppergolem.config.Config;
 import ma.shaur.bettercoppergolem.config.ConfigHandler;
 import ma.shaur.bettercoppergolem.custom.entity.LastItemDataHolder;
+import ma.shaur.bettercoppergolem.custom.world.CopperGolemChestLog;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.GlobalPos;
 import net.minecraft.core.component.DataComponentMap;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.server.level.ServerLevel;
@@ -69,6 +73,15 @@ public abstract class TransportItemsBetweenContainersMixin
 
 	@Shadow
 	protected abstract void setVisitedBlockPos(PathfinderMob entity, Level world, BlockPos pos);
+	
+	@Shadow
+	private Optional<TransportItemTarget> getTransportTarget(ServerLevel level, PathfinderMob entity) { return Optional.empty(); }
+
+	@Shadow
+	private boolean isWantedBlock(PathfinderMob entity, BlockState state) { return false; }
+
+	@Shadow
+	private boolean isContainerLocked(TransportItemTarget target) { return false; }
 	
 	@ModifyConstant(method = "onReachedTarget", constant = @Constant(intValue = 60))
 	public int interactionTime(int constant)
@@ -270,15 +283,102 @@ public abstract class TransportItemsBetweenContainersMixin
 		{
 			if(isPickingUpItems(entity)) 
 			{
+				// Log the chest as a pickup source so the golem can remember it for future trips
+				if(world instanceof ServerLevel serverLevel && ConfigHandler.getConfig().maxGlobalChestLogSize > 0)
+					CopperGolemChestLog.get(serverLevel).rememberPickupSource(serverLevel, pos, inventory);
 				if (!matchesGettingItemsRequirement(inventory)) setVisitedBlockPos(entity, world, pos);
 			}
-			else if(!matchesLeavingItemsRequirement(entity, inventory))
+			else
 			{
-				setVisitedBlockPos(entity, world, pos);
+				// Log the chest as a placement target so the golem can remember it for future trips
+				if(world instanceof ServerLevel serverLevel && ConfigHandler.getConfig().maxGlobalChestLogSize > 0)
+					CopperGolemChestLog.get(serverLevel).rememberPlacementTarget(serverLevel, pos, inventory);
+				if(!matchesLeavingItemsRequirement(entity, inventory))
+					setVisitedBlockPos(entity, world, pos);
 			}
 		}
 	}
 	
+	@Redirect(method = "updateInvalidTarget", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/behavior/TransportItemsBetweenContainers;getTransportTarget(Lnet/minecraft/server/level/ServerLevel;Lnet/minecraft/world/entity/PathfinderMob;)Ljava/util/Optional;"))
+	private Optional<TransportItemTarget> betterGetTransportTarget(TransportItemsBetweenContainers moveItemsTask, ServerLevel level, PathfinderMob entity)
+	{
+		Optional<TransportItemTarget> loggedTarget = getLoggedTransportTarget(level, entity);
+		return loggedTarget.isPresent() ? loggedTarget : getTransportTarget(level, entity);
+	}
+
+	// Capture pickup/placement state BEFORE the interaction runs (at HEAD), because by TAIL
+	// betterPickUpItems has already placed an item in the entity's hand, making isPickingUpItems
+	// return false even for what was originally a pickup interaction.
+	@Inject(method = "onReachedTarget", at = @At("HEAD"))
+	private void rememberReachedChest(TransportItemTarget target, Level level, PathfinderMob entity, CallbackInfo info)
+	{
+		if(ConfigHandler.getConfig().maxGlobalChestLogSize <= 0) return;
+		if(level instanceof ServerLevel serverLevel)
+		{
+			CopperGolemChestLog log = CopperGolemChestLog.get(serverLevel);
+			if(isPickingUpItems(entity))
+				log.rememberPickupSource(serverLevel, target.pos(), target.container());
+			else
+				log.rememberPlacementTarget(serverLevel, target.pos(), target.container());
+		}
+	}
+
+	private Optional<TransportItemTarget> getLoggedTransportTarget(ServerLevel level, PathfinderMob entity)
+	{
+		if(ConfigHandler.getConfig().maxGlobalChestLogSize <= 0) return Optional.empty();
+
+		ItemStack wantedStack = getWantedLoggedStack(entity);
+		if(wantedStack.isEmpty()) return Optional.empty();
+
+		CopperGolemChestLog log = CopperGolemChestLog.get(level);
+		List<GlobalPos> candidates = isPickingUpItems(entity)
+				? log.pickupCandidatesFor(wantedStack.getItem(), level, entity.blockPosition(), ConfigHandler.getConfig().horizontalRange)
+				: log.placementCandidatesFor(wantedStack.getItem(), level, entity.blockPosition(), ConfigHandler.getConfig().horizontalRange);
+		for(GlobalPos candidate : candidates)
+		{
+			TransportItemTarget target = TransportItemTarget.tryCreatePossibleTarget(candidate.pos(), level);
+			if(isLoggedTargetValid(entity, level, target, wantedStack))
+			{
+				log.touch(candidate);
+				return Optional.of(target);
+			}
+			log.remove(candidate);
+		}
+
+		return Optional.empty();
+	}
+
+	private ItemStack getWantedLoggedStack(PathfinderMob entity)
+	{
+		if(isPickingUpItems(entity))
+		{
+			return entity instanceof LastItemDataHolder lastStackHolder ? lastStackHolder.getLastItemStack() : ItemStack.EMPTY;
+		}
+		return entity.getMainHandItem();
+	}
+
+	private boolean isLoggedTargetValid(PathfinderMob entity, Level level, TransportItemTarget target, ItemStack wantedStack)
+	{
+		if(target == null || wantedStack.isEmpty()) return false;
+		if(!isWantedBlock(entity, target.state()) || isContainerLocked(target)) return false;
+
+		Container container = target.container();
+		if(isPickingUpItems(entity))
+		{
+			return hasItem(container, wantedStack);
+		}
+
+		return hasItem(container, wantedStack) && matchesLeavingItemsRequirement(entity, container);
+	}
+
+	private static boolean hasItem(Container container, ItemStack wantedStack)
+	{
+		for(ItemStack stack : container)
+		{
+			if(!stack.isEmpty() && ItemStack.isSameItem(stack, wantedStack)) return true;
+		}
+		return false;
+	}
 	//I am become lag, the destroyer of TPS
 	@Redirect(method = "matchesLeavingItemsRequirement", at = @At(value = "INVOKE", target = "Lnet/minecraft/world/entity/ai/behavior/TransportItemsBetweenContainers;hasItemMatchingHandItem(Lnet/minecraft/world/entity/PathfinderMob;Lnet/minecraft/world/Container;)Z"))
 	private static boolean betterHasItemMatchingHandItem(PathfinderMob entity, Container inventory, PathfinderMob paramEntity, Container paramInventory)

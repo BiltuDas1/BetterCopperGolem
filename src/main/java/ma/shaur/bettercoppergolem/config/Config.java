@@ -26,6 +26,8 @@ public class Config
 	public int horizontalRange = 32;
 
 	public int interactionTime = 60;
+
+	public int maxGlobalChestLogSize = 64;
 	
 	public Config() {}
 }
