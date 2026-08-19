@@ -16,6 +16,7 @@ import org.spongepowered.asm.mixin.injection.ModifyConstant;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import com.llamalad7.mixinextras.sugar.Local;
 
@@ -49,7 +50,6 @@ import net.minecraft.world.level.block.CopperChestBlock;
 import net.minecraft.world.level.block.entity.BaseContainerBlockEntity;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.pathfinder.Path;
 
 @Mixin(TransportItemsBetweenContainers.class)
 public abstract class TransportItemsBetweenContainersMixin {
@@ -116,23 +116,16 @@ public abstract class TransportItemsBetweenContainersMixin {
 	}
 
 	/**
-	 * Intercepts vanilla's line-of-sight-only reachability check.
-	 * Vanilla calls markVisitedBlockPosAsUnreachable when it cannot see the chest face via ray-cast,
-	 * immediately blacklisting it. We override it: if the golem can actually navigate there
-	 * (a real walkable path exists), skip the blacklisting so the golem will walk around obstacles.
+	 * Vanilla additionally requires a ray-cast to a chest face before accepting a target.
+	 * A chest selected by the golem is already a valid target, and the navigation path is
+	 * sufficient to get the golem into interaction range. Do not reject the target merely
+	 * because another block is between the golem and the chest.
 	 */
-	@Inject(method = "markVisitedBlockPosAsUnreachable", at = @At("HEAD"), cancellable = true)
-	protected void betterMarkVisitedBlockPosAsUnreachable(PathfinderMob entity, Level world, BlockPos pos, CallbackInfo ci)
-	{
-		// Try to find an actual navigation path to any adjacent walkable position around the chest.
-		// A path range of 1 means the entity just needs to reach any neighbour of the chest.
-		Path path = entity.getNavigation().createPath(pos, 1);
-		if (path != null && path.canReach())
-		{
-			// A real path exists — don't blacklist, let the golem walk there naturally.
-			ci.cancel();
-		}
-		// No path found either — let vanilla blacklist it as truly unreachable.
+	@Inject(method = "targetIsReachableFromPosition", at = @At("HEAD"), cancellable = true)
+	private void betterTargetIsReachableFromPosition(Level level, boolean withinDistance,
+			net.minecraft.world.phys.Vec3 position, TransportItemTarget target, PathfinderMob entity,
+			CallbackInfoReturnable<Boolean> cir) {
+		cir.setReturnValue(withinDistance);
 	}
 
 	@ModifyConstant(method = "onReachedTarget", constant = @Constant(intValue = 60))
